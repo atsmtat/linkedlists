@@ -33,6 +33,24 @@ pub struct Node<T> {
 
 type Link<T> = Option<NonNull<Node<T>>>;
 
+pub struct Iter<'a, T> {
+    front: Link<T>,
+    back: Link<T>,
+    len: usize,
+    _phantom: PhantomData<&'a T>,
+}
+
+pub struct IterMut<'a, T> {
+    front: Link<T>,
+    back: Link<T>,
+    len: usize,
+    _phantom: PhantomData<&'a mut T>,
+}
+
+pub struct IntoIter<T> {
+    list: LinkedList<T>,
+}
+
 impl<T> LinkedList<T> {
     pub fn new() -> Self {
         LinkedList {
@@ -156,13 +174,6 @@ impl<T> Drop for LinkedList<T> {
     }
 }
 
-pub struct Iter<'a, T> {
-    front: Link<T>,
-    back: Link<T>,
-    len: usize,
-    _phantom: PhantomData<&'a ()>,
-}
-
 impl<'a, T: 'a> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
@@ -205,13 +216,6 @@ impl<'a, T: 'a> ExactSizeIterator for Iter<'a, T> {
     }
 }
 
-pub struct IterMut<'a, T> {
-    front: Link<T>,
-    back: Link<T>,
-    len: usize,
-    _phantom: PhantomData<&'a ()>,
-}
-
 impl<'a, T: 'a> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
 
@@ -252,10 +256,6 @@ impl<'a, T: 'a> ExactSizeIterator for IterMut<'a, T> {
     fn len(&self) -> usize {
         self.len
     }
-}
-
-pub struct IntoIter<T> {
-    list: LinkedList<T>,
 }
 
 impl<T> Iterator for IntoIter<T> {
@@ -385,6 +385,23 @@ impl<T: Hash> Hash for LinkedList<T> {
         }
     }
 }
+
+unsafe impl<T: Send> Send for LinkedList<T> {}
+unsafe impl<T: Sync> Sync for LinkedList<T> {}
+
+unsafe impl<'a, T: Send> Send for Iter<'a, T> {}
+unsafe impl<'a, T: Sync> Sync for Iter<'a, T> {}
+
+unsafe impl<'a, T: Send> Send for IterMut<'a, T> {}
+unsafe impl<'a, T: Sync> Sync for IterMut<'a, T> {}
+
+/// ```compile_fail
+/// use linkedlists::sixth::IterMut;
+///
+/// fn iter_mut_covariant<'i, 'a, T>(x: IterMut<'i, &'static T>) -> IterMut<'i, &'a T> { x }
+/// ```
+#[allow(dead_code)]
+fn iter_mut_invariant() {}
 
 #[cfg(test)]
 mod test {
@@ -686,6 +703,38 @@ mod test {
             let mut list2: LinkedList<&str> = LinkedList::new();
             list2.push_front(world.as_str());
             take_two(list1, list2);
+        }
+    }
+
+    #[test]
+    fn test_properties() {
+        use super::{IntoIter, Iter, IterMut};
+        fn is_send<T: Send>() {}
+        fn is_sync<T: Sync>() {}
+
+        is_send::<LinkedList<i32>>();
+        is_sync::<LinkedList<i32>>();
+
+        is_send::<Iter<i32>>();
+        is_sync::<Iter<i32>>();
+
+        is_send::<IterMut<i32>>();
+        is_sync::<IterMut<i32>>();
+
+        is_send::<IntoIter<i32>>();
+        is_sync::<IntoIter<i32>>();
+
+        #[allow(dead_code)]
+        {
+            fn list_covariant<'a>(x: LinkedList<&'static i32>) -> LinkedList<&'a i32> {
+                x
+            }
+            fn iter_covariant<'a, 'b>(x: Iter<'a, &'static i32>) -> Iter<'a, &'b i32> {
+                x
+            }
+            fn into_iter_covariant<'a>(x: IntoIter<&'static i32>) -> IntoIter<&'a i32> {
+                x
+            }
         }
     }
 }
